@@ -1,0 +1,5 @@
+{
+  "name": "WebCrate",
+  "description": "A native-style desktop app to save, categorize, and search your digital tools and online resources. It features AI-powered metadata fetching to automatically populate website titles and descriptions.",
+  "requestFramePermissions": []
+}
