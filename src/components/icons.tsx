@@ -94,15 +94,35 @@ export const EditIcon = ({ className }: { className?: string }) => (
 export const DeleteIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 20 20"
-    fill="currentColor"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     className={className}
   >
-    <path
-      fillRule="evenodd"
-      d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.58.22-2.365.468a.75.75 0 1 0 .468 1.451c.773-.245 1.53-.386 2.292-.457V17.25A2.75 2.75 0 0 0 8.75 20h2.5A2.75 2.75 0 0 0 14 17.25V4.657c.765.07 1.52.212 2.292.457a.75.75 0 1 0 .468-1.451c-.785-.248-1.57-.391-2.365-.468V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V17.25c0 .138-.112.25-.25.25h-4.5a.25.25 0 0 1-.25-.25V4.075C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 0-1.16 1.06l.58.64L7.42 10a.75.75 0 0 0 1.16 1.06l.58-.64.58.64a.75.75 0 0 0 1.16-1.06L10.58 9.42l.58-.64a.75.75 0 0 0-1.16-1.06L10 8.36l-.58-.64Z"
-      clipRule="evenodd"
-    />
+    <path d="M3 6h18" />
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+    <line x1="10" x2="10" y1="11" y2="17" />
+    <line x1="14" x2="14" y1="11" y2="17" />
+  </svg>
+);
+
+export const SearchIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.35-4.35" />
   </svg>
 );
 

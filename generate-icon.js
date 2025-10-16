@@ -1,4 +1,11 @@
-<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+// Simple script to create a placeholder icon
+// This creates a canvas-based PNG icon for the desktop app
+
+const fs = require("fs");
+const path = require("path");
+
+// Create a simple SVG that can be converted
+const svgContent = `<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
   <!-- Background with gradient -->
   <defs>
     <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -25,4 +32,21 @@
     <!-- Letter W -->
     <text x="0" y="50" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="white" text-anchor="middle">W</text>
   </g>
-</svg>
+</svg>`;
+
+// Save the SVG (it's already there, but this ensures it's correct)
+const publicDir = path.join(__dirname, "public");
+if (!fs.existsSync(publicDir)) {
+  fs.mkdirSync(publicDir, { recursive: true });
+}
+
+fs.writeFileSync(path.join(publicDir, "icon.svg"), svgContent);
+
+console.log("✅ SVG icon created at public/icon.svg");
+console.log("\n📝 To convert to PNG, you can:");
+console.log("1. Open public/icon.svg in a browser");
+console.log("2. Use an online converter: https://cloudconvert.com/svg-to-png");
+console.log("3. Or use any image editor (GIMP, Photoshop, etc.)");
+console.log(
+  "\n💡 Make sure to export as 512x512 PNG and save as public/icon.png"
+);
