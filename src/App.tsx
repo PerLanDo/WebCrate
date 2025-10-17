@@ -44,6 +44,9 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [isFolderFormVisible, setIsFolderFormVisible] = useState(false);
+  const [isAddToFolderModalVisible, setIsAddToFolderModalVisible] =
+    useState(false);
+  const [targetFolderId, setTargetFolderId] = useState<number | null>(null);
   const [editingLink, setEditingLink] = useState<Link | null>(null);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -201,6 +204,39 @@ const App: React.FC = () => {
         setSelectedFolder(null);
       }
     }
+  };
+
+  const handleOpenAddToFolder = (folderId: number) => {
+    setTargetFolderId(folderId);
+    setIsAddToFolderModalVisible(true);
+  };
+
+  const handleAddItemToFolder = async (linkId: number) => {
+    if (targetFolderId === null) return;
+
+    const linkToUpdate = links.find((link) => link.id === linkId);
+    if (!linkToUpdate) return;
+
+    const updatedLink: Link = {
+      ...linkToUpdate,
+      folder_id: targetFolderId,
+    };
+
+    await updateLink(updatedLink);
+    await refreshLinks();
+  };
+
+  const handleRemoveItemFromFolder = async (linkId: number) => {
+    const linkToUpdate = links.find((link) => link.id === linkId);
+    if (!linkToUpdate) return;
+
+    const updatedLink: Link = {
+      ...linkToUpdate,
+      folder_id: undefined,
+    };
+
+    await updateLink(updatedLink);
+    await refreshLinks();
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -699,6 +735,16 @@ const App: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          handleOpenAddToFolder(folder.id);
+                        }}
+                        className="p-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-full hover:bg-[var(--color-primary)] hover:text-white transition-colors"
+                        title="Add items to folder"
+                      >
+                        <PlusIcon className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleEditFolder(folder);
                         }}
                         className="p-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-full hover:bg-[var(--color-accent)] transition-colors"
@@ -890,6 +936,16 @@ const App: React.FC = () => {
                     )}
                     {viewMode === "compact" && <div />}
                     <div className="flex items-center gap-2">
+                      {selectedFolder !== null &&
+                        link.folder_id === selectedFolder && (
+                          <button
+                            onClick={() => handleRemoveItemFromFolder(link.id)}
+                            className="p-1 text-[var(--color-muted-foreground)] hover:text-[var(--color-warning)] transition-colors"
+                            title="Remove from folder"
+                          >
+                            <CloseIcon className="w-4 h-4" />
+                          </button>
+                        )}
                       <button
                         onClick={() => handleEdit(link)}
                         className="p-1 text-[var(--color-muted-foreground)] hover:text-[var(--color-primary)] transition-colors"
@@ -909,6 +965,87 @@ const App: React.FC = () => {
             )}
           </div>
         </section>
+        {/* Add to Folder Modal */}
+        {isAddToFolderModalVisible && targetFolderId !== null && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setIsAddToFolderModalVisible(false)}
+          >
+            <div
+              className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-[var(--color-border)] flex items-center justify-between">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <PlusIcon className="w-5 h-5" />
+                  Add Items to{" "}
+                  {folders.find((f) => f.id === targetFolderId)?.name}
+                </h2>
+                <button
+                  onClick={() => setIsAddToFolderModalVisible(false)}
+                  className="text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+                >
+                  <CloseIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="space-y-2">
+                  {links.filter((link) => link.folder_id !== targetFolderId)
+                    .length === 0 ? (
+                    <p className="text-center py-8 text-[var(--color-muted-foreground)]">
+                      All items are already in this folder
+                    </p>
+                  ) : (
+                    links
+                      .filter((link) => link.folder_id !== targetFolderId)
+                      .map((link) => (
+                        <div
+                          key={link.id}
+                          className="p-4 bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-md)] flex items-center justify-between gap-4 hover:border-[var(--color-primary)] transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-[var(--color-foreground)] truncate">
+                              {link.title}
+                            </h3>
+                            {link.url && (
+                              <p className="text-sm text-[var(--color-muted-foreground)] truncate">
+                                {link.url}
+                              </p>
+                            )}
+                            {link.folder_id && (
+                              <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted-foreground)] mt-1">
+                                <FolderIcon className="w-3 h-3" />
+                                {folders.find((f) => f.id === link.folder_id)
+                                  ?.name || "Unknown Folder"}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              handleAddItemToFolder(link.id);
+                            }}
+                            className="px-4 py-2 bg-[var(--color-primary)] text-[var(--color-primary-foreground)] font-semibold rounded-[var(--radius-md)] hover:opacity-90 transition-opacity text-sm whitespace-nowrap"
+                          >
+                            Add to Folder
+                          </button>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-[var(--color-border)] flex justify-end">
+                <button
+                  onClick={() => setIsAddToFolderModalVisible(false)}
+                  className="px-6 py-2 bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] font-semibold rounded-[var(--radius-md)] hover:opacity-90 transition-opacity"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
