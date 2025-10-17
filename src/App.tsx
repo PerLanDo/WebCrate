@@ -1,14 +1,21 @@
 import React, { useState, useEffect, FormEvent, useCallback } from "react";
-import { Link, NewLink, SortOption } from "./types";
+import { Link, NewLink, Folder, NewFolder, SortOption } from "./types";
 import { Category, CATEGORIES, ITEM_COLORS } from "./constants";
 import {
   getAllLinks,
   addLink,
   updateLink,
   deleteLink,
+  getAllFolders,
+  addFolder,
+  updateFolder,
+  deleteFolder,
+  exportData,
+  importData,
 } from "./services/localDbService";
 import { fetchLinkMetadata } from "./services/geminiService";
 import {
+  SparklesIcon,
   MagicWandIcon,
   AppIcon,
   PlusIcon,
@@ -19,8 +26,10 @@ import {
   CloseIcon,
   ListViewIcon,
   GridViewIcon,
-  CompactViewIcon,
   SearchIcon,
+  FolderIcon,
+  DownloadIcon,
+  UploadIcon,
 } from "./components/icons";
 
 type Theme = "light" | "dark";
@@ -28,11 +37,15 @@ type ViewMode = "list" | "grid" | "compact";
 
 const App: React.FC = () => {
   const [links, setLinks] = useState<Link[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>("created_at_desc");
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFormVisible, setIsFormVisible] = useState(false);
+  const [isFolderFormVisible, setIsFolderFormVisible] = useState(false);
   const [editingLink, setEditingLink] = useState<Link | null>(null);
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<Theme>(() => {
     const savedTheme = localStorage.getItem("theme") as Theme;
@@ -43,13 +56,18 @@ const App: React.FC = () => {
     return savedViewMode || "list";
   });
 
-  // Form state
+  // Link form state
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
   const [category, setCategory] = useState<Category>(CATEGORIES[0]);
   const [color, setColor] = useState<string | undefined>(undefined);
+  const [folderId, setFolderId] = useState<number | undefined>(undefined);
+
+  // Folder form state
+  const [folderName, setFolderName] = useState("");
+  const [folderColor, setFolderColor] = useState<string>(ITEM_COLORS[0]);
 
   // Apply theme on mount and when it changes
   useEffect(() => {
@@ -79,9 +97,19 @@ const App: React.FC = () => {
     }
   }, [sortBy]);
 
+  const refreshFolders = useCallback(async () => {
+    try {
+      const fetchedFolders = await getAllFolders();
+      setFolders(fetchedFolders);
+    } catch (err) {
+      console.error("Failed to fetch folders:", err);
+    }
+  }, []);
+
   useEffect(() => {
     refreshLinks();
-  }, [refreshLinks]);
+    refreshFolders();
+  }, [refreshLinks, refreshFolders]);
 
   const handleAutoFill = async () => {
     if (!url || !url.startsWith("http")) {
@@ -113,13 +141,25 @@ const App: React.FC = () => {
     setNotes("");
     setCategory(CATEGORIES[0]);
     setColor(undefined);
+    setFolderId(undefined);
     setError(null);
     setEditingLink(null);
+  };
+
+  const clearFolderForm = () => {
+    setFolderName("");
+    setFolderColor(ITEM_COLORS[0]);
+    setEditingFolder(null);
   };
 
   const handleAddNew = () => {
     clearForm();
     setIsFormVisible(true);
+  };
+
+  const handleAddNewFolder = () => {
+    clearFolderForm();
+    setIsFolderFormVisible(true);
   };
 
   const handleEdit = (link: Link) => {
@@ -130,13 +170,36 @@ const App: React.FC = () => {
     setNotes(link.notes);
     setCategory(link.category);
     setColor(link.color);
+    setFolderId(link.folder_id);
     setIsFormVisible(true);
+  };
+
+  const handleEditFolder = (folder: Folder) => {
+    setEditingFolder(folder);
+    setFolderName(folder.name);
+    setFolderColor(folder.color);
+    setIsFolderFormVisible(true);
   };
 
   const handleDelete = async (id: number) => {
     if (window.confirm("Are you sure you want to delete this item?")) {
       await deleteLink(id);
       await refreshLinks();
+    }
+  };
+
+  const handleDeleteFolder = async (id: number) => {
+    if (
+      window.confirm(
+        "Are you sure you want to delete this folder? Items in this folder will not be deleted."
+      )
+    ) {
+      await deleteFolder(id);
+      await refreshFolders();
+      await refreshLinks();
+      if (selectedFolder === id) {
+        setSelectedFolder(null);
+      }
     }
   };
 
@@ -157,6 +220,7 @@ const App: React.FC = () => {
         notes,
         category,
         color,
+        folder_id: folderId,
       };
       await updateLink(updatedLink);
     } else {
@@ -167,6 +231,7 @@ const App: React.FC = () => {
         notes,
         category,
         color,
+        folder_id: folderId,
       };
       await addLink(newLink);
     }
@@ -174,6 +239,84 @@ const App: React.FC = () => {
     clearForm();
     setIsFormVisible(false);
     await refreshLinks();
+  };
+
+  const handleFolderSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!folderName.trim()) {
+      return;
+    }
+
+    if (editingFolder) {
+      const updatedFolder: Folder = {
+        ...editingFolder,
+        name: folderName,
+        color: folderColor,
+      };
+      await updateFolder(updatedFolder);
+    } else {
+      const newFolder: NewFolder = {
+        name: folderName,
+        color: folderColor,
+      };
+      await addFolder(newFolder);
+    }
+
+    clearFolderForm();
+    setIsFolderFormVisible(false);
+    await refreshFolders();
+  };
+
+  const handleExportData = () => {
+    try {
+      const jsonData = exportData();
+      const blob = new Blob([jsonData], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `webcrate-backup-${
+        new Date().toISOString().split("T")[0]
+      }.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+      setError("Failed to export data. Please try again.");
+    }
+  };
+
+  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        const result = importData(content);
+
+        if (result.success) {
+          await refreshLinks();
+          await refreshFolders();
+          alert(
+            `Import successful! Imported ${
+              result.counts?.links || 0
+            } links and ${result.counts?.folders || 0} folders.`
+          );
+        } else {
+          setError(result.message);
+        }
+      } catch (err) {
+        console.error("Import failed:", err);
+        setError("Failed to import data. Please check the file format.");
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset input so same file can be selected again
+    event.target.value = "";
   };
 
   const getCategoryBadgeColor = (category: Category) => {
@@ -191,17 +334,26 @@ const App: React.FC = () => {
     }
   };
 
-  // Filter links based on search query
+  // Filter links based on search query and selected folder
   const filteredLinks = links.filter((link) => {
     const query = searchQuery.toLowerCase();
-    return (
+    const matchesSearch =
       link.title.toLowerCase().includes(query) ||
       link.description.toLowerCase().includes(query) ||
       link.url.toLowerCase().includes(query) ||
       link.notes.toLowerCase().includes(query) ||
-      link.category.toLowerCase().includes(query)
-    );
+      link.category.toLowerCase().includes(query);
+
+    const matchesFolder =
+      selectedFolder === null || link.folder_id === selectedFolder;
+
+    return matchesSearch && matchesFolder;
   });
+
+  // Count links in each folder
+  const getLinkCountForFolder = (folderId: number) => {
+    return links.filter((link) => link.folder_id === folderId).length;
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-background)]">
@@ -213,19 +365,42 @@ const App: React.FC = () => {
               WebCrate
             </h1>
           </div>
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-full hover:bg-[var(--color-accent)] transition-colors"
-            title={
-              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
-            }
-          >
-            {theme === "dark" ? (
-              <SunIcon className="w-5 h-5 md:w-6 md:h-6 text-[var(--color-foreground)]" />
-            ) : (
-              <MoonIcon className="w-5 h-5 md:w-6 md:h-6 text-[var(--color-foreground)]" />
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportData}
+              className="p-2 rounded-full hover:bg-[var(--color-accent)] transition-colors"
+              title="Export data"
+            >
+              <DownloadIcon className="w-5 h-5 md:w-6 md:h-6 text-[var(--color-foreground)]" />
+            </button>
+            <label
+              className="p-2 rounded-full hover:bg-[var(--color-accent)] transition-colors cursor-pointer"
+              title="Import data"
+            >
+              <UploadIcon className="w-5 h-5 md:w-6 md:h-6 text-[var(--color-foreground)]" />
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportData}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-full hover:bg-[var(--color-accent)] transition-colors"
+              title={
+                theme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+              }
+            >
+              {theme === "dark" ? (
+                <SunIcon className="w-5 h-5 md:w-6 md:h-6 text-[var(--color-foreground)]" />
+              ) : (
+                <MoonIcon className="w-5 h-5 md:w-6 md:h-6 text-[var(--color-foreground)]" />
+              )}
+            </button>
+          </div>
         </header>{" "}
         <section className="mb-12">
           {isFormVisible ? (
@@ -261,7 +436,9 @@ const App: React.FC = () => {
                   disabled={isFetching || !url.startsWith("http")}
                   className="absolute top-1/2 right-1.5 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1 bg-[var(--color-primary)] hover:opacity-90 rounded-[var(--radius-md)] text-sm font-semibold text-[var(--color-primary-foreground)] disabled:bg-[var(--color-muted)] disabled:text-[var(--color-muted-foreground)] disabled:cursor-not-allowed transition-colors"
                 >
-                  <MagicWandIcon className="w-4 h-4" />
+                  <SparklesIcon
+                    className={`w-4 h-4 ${isFetching ? "animate-pulse" : ""}`}
+                  />
                   {isFetching ? "Fetching..." : "Auto-Fill"}
                 </button>
               </div>
@@ -304,10 +481,36 @@ const App: React.FC = () => {
               ></textarea>
 
               <div>
+                <label
+                  htmlFor="folder-select"
+                  className="block text-sm font-medium text-[var(--color-muted-foreground)] mb-2"
+                >
+                  Folder
+                </label>
+                <select
+                  id="folder-select"
+                  value={folderId || ""}
+                  onChange={(e) =>
+                    setFolderId(
+                      e.target.value ? Number(e.target.value) : undefined
+                    )
+                  }
+                  className="w-full bg-[var(--color-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-2 focus:ring-2 focus:ring-[var(--color-ring)] focus:outline-none transition-colors"
+                >
+                  <option value="">No Folder</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-[var(--color-muted-foreground)] mb-2">
                   Color Tag
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {ITEM_COLORS.map((c) => (
                     <button
                       type="button"
@@ -368,11 +571,168 @@ const App: React.FC = () => {
             </button>
           )}
         </section>
+        {/* Folder Management Section */}
+        <section className="mb-8">
+          {isFolderFormVisible ? (
+            <form
+              onSubmit={handleFolderSubmit}
+              className="relative p-6 bg-[var(--color-card)] border border-[var(--color-border)] rounded-[var(--radius-lg)] shadow-lg space-y-4 animate-fade-in"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFolderFormVisible(false);
+                  clearFolderForm();
+                }}
+                className="absolute top-4 right-4 text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+              >
+                <CloseIcon className="w-6 h-6" />
+              </button>
+              <h2 className="text-xl font-semibold">
+                {editingFolder ? "Edit Folder" : "Add a New Folder"}
+              </h2>
+
+              <input
+                type="text"
+                placeholder="Folder name"
+                value={folderName}
+                onChange={(e) => setFolderName(e.target.value)}
+                required
+                className="w-full bg-[var(--color-input)] border border-[var(--color-border)] rounded-[var(--radius-md)] px-4 py-2 focus:ring-2 focus:ring-[var(--color-ring)] focus:outline-none transition-colors"
+              />
+
+              <div>
+                <label className="block text-sm font-medium text-[var(--color-muted-foreground)] mb-2">
+                  Folder Color
+                </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {ITEM_COLORS.map((c) => (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={() => setFolderColor(c)}
+                      style={{ backgroundColor: c }}
+                      className={`w-7 h-7 rounded-full transition-transform hover:scale-110 ${
+                        folderColor === c
+                          ? "ring-2 ring-offset-2 ring-offset-[var(--color-card)] ring-[var(--color-ring)]"
+                          : ""
+                      }`}
+                    ></button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 pt-2">
+                <button
+                  type="submit"
+                  className="w-full md:w-auto px-6 py-2 bg-[var(--color-primary)] text-[var(--color-primary-foreground)] font-bold rounded-[var(--radius-md)] hover:opacity-90 transition-opacity"
+                >
+                  {editingFolder ? "Update Folder" : "Save Folder"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFolderFormVisible(false);
+                    clearFolderForm();
+                  }}
+                  className="px-6 py-2 text-[var(--color-muted-foreground)] font-semibold hover:text-[var(--color-foreground)] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <FolderIcon className="w-5 h-5" />
+                  Folders
+                </h2>
+                <button
+                  onClick={handleAddNewFolder}
+                  className="flex items-center gap-2 px-4 py-2 bg-[var(--color-secondary)] text-[var(--color-secondary-foreground)] font-semibold rounded-[var(--radius-md)] hover:opacity-90 transition-opacity text-sm"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  New Folder
+                </button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setSelectedFolder(null)}
+                  className={`px-4 py-2 rounded-[var(--radius-md)] font-medium transition-colors text-sm ${
+                    selectedFolder === null
+                      ? "bg-[var(--color-primary)] text-[var(--color-primary-foreground)]"
+                      : "bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-foreground)] hover:bg-[var(--color-accent)]"
+                  }`}
+                >
+                  All Items
+                  <span className="ml-2 px-2 py-0.5 rounded-full bg-black/20 text-xs">
+                    {links.length}
+                  </span>
+                </button>
+                {folders.map((folder) => (
+                  <div key={folder.id} className="relative group">
+                    <button
+                      onClick={() => setSelectedFolder(folder.id)}
+                      style={{
+                        backgroundColor:
+                          selectedFolder === folder.id
+                            ? folder.color
+                            : undefined,
+                      }}
+                      className={`px-4 py-2 rounded-[var(--radius-md)] font-medium transition-colors text-sm ${
+                        selectedFolder === folder.id
+                          ? "text-white"
+                          : "bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-foreground)] hover:bg-[var(--color-accent)]"
+                      }`}
+                    >
+                      <div
+                        className="inline-block w-3 h-3 rounded-full mr-2"
+                        style={{ backgroundColor: folder.color }}
+                      ></div>
+                      {folder.name}
+                      <span className="ml-2 px-2 py-0.5 rounded-full bg-black/20 text-xs">
+                        {getLinkCountForFolder(folder.id)}
+                      </span>
+                    </button>
+                    <div className="absolute top-0 right-0 -mr-1 -mt-1 hidden group-hover:flex gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditFolder(folder);
+                        }}
+                        className="p-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-full hover:bg-[var(--color-accent)] transition-colors"
+                        title="Edit folder"
+                      >
+                        <EditIcon className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFolder(folder.id);
+                        }}
+                        className="p-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-full hover:bg-[var(--color-destructive)] hover:text-white transition-colors"
+                        title="Delete folder"
+                      >
+                        <DeleteIcon className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
         <section>
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <h2 className="text-2xl font-bold">
-                Saved Items ({links.length})
+                {selectedFolder === null
+                  ? `All Items (${links.length})`
+                  : `${
+                      folders.find((f) => f.id === selectedFolder)?.name ||
+                      "Folder"
+                    } (${filteredLinks.length})`}
               </h2>
               <div className="relative w-full sm:w-64">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-muted-foreground)]" />
@@ -423,7 +783,7 @@ const App: React.FC = () => {
                     }`}
                     title="Compact View"
                   >
-                    <CompactViewIcon className="w-4 h-4" />
+                    <ListViewIcon className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
